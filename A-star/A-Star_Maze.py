@@ -1,4 +1,5 @@
 from pico2d import *
+import heapq
 
 class Node:
     """
@@ -23,6 +24,56 @@ class Node:
 
 def manhattan(a, b):
     return abs(a.x - b.x) + abs(a.y - b.y)
+
+def get_neighbors(node, grid):
+    directions = [(0,1), (1,0), (0,-1), (-1,0)]
+    neighbors = []
+    for dx, dy in directions:
+        nx, ny = node.x + dx, node.y + dy
+        if 0 <= nx < 20 and 0 <= ny < 20:
+            neighbor = grid[nx][ny]
+            if neighbor.state != 1:  # 벽은 통과 불가
+                neighbors.append(neighbor)
+    return neighbors
+
+def a_star(start, goal, grid):
+    open_list = []
+    closed_list = set()
+
+    start.g = 0
+    start.h = manhattan(start, goal)
+    start.f = start.g + start.h
+
+    heapq.heappush(open_list, (start.f, start))
+
+    while open_list:
+        current = heapq.heappop(open_list)[1]
+        if current == goal:
+            return reconstruct_path(goal)
+
+        closed_list.add(current)
+
+        for neighbor in get_neighbors(current, grid):
+            if neighbor in closed_list:
+                continue
+
+            tentative_g = current.g + 1
+            if tentative_g < neighbor.g:
+                neighbor.parent = current
+                neighbor.g = tentative_g
+                neighbor.h = manhattan(neighbor, goal)
+                neighbor.f = neighbor.g + neighbor.h
+
+                heapq.heappush(open_list, (neighbor.f, neighbor))
+
+def reconstruct_path(goal):
+    path = []
+    current = goal
+    while current.parent:
+        path.append(current)
+        current = current.parent
+    path.reverse()
+    return path
 
 # 초기화
 open_canvas(400, 400)
