@@ -1,18 +1,8 @@
 from pico2d import *
 import heapq
+from itertools import count
 
 class Node:
-    """
-    state:
-    0: Empty
-    1: Wall
-    2: Check - In Stack
-    3: Check - Pass
-    4: Road
-    10: Start
-    20: Goal
-    """
-
     def __init__(self, x=0, y=0, state=0):
         self.x = x
         self.y = y
@@ -35,6 +25,72 @@ def get_neighbors(node, grid):
             if neighbor.state != 1:  # 벽은 통과 불가
                 neighbors.append(neighbor)
     return neighbors
+def reset_nodes_and_marks():
+    for i in range(20):
+        for j in range(20):
+            n = grid[i][j]
+            n.g = float('inf'); n.h = 0; n.f = float('inf'); n.parent = None
+            if n.state in (2, 3, 4):   # 시각화 흔적(열림/닫힘/경로) 초기화
+                n.state = 0
+
+def find_start_goal():
+    s = g = None
+    for i in range(20):
+        for j in range(20):
+            n = grid[i][j]
+            if n.state == 10: s = n
+            elif n.state == 20: g = n
+    return s, g
+
+def start_astar():
+    global algo_running, start_node, goal_node, open_heap, closed_set
+    reset_nodes_and_marks()
+    start_node, goal_node = find_start_goal()
+    if not (start_node and goal_node):
+        return  # 시작/도착 미지정 시 무시
+    open_heap = []
+    closed_set = set()
+    start_node.g = 0
+    start_node.h = manhattan(start_node, goal_node)
+    start_node.f = start_node.h
+    heapq.heappush(open_heap, (start_node.f, next(counter), start_node))
+    algo_running = True
+
+def step_astar():
+    global algo_running
+    if not open_heap:
+        algo_running = False
+        return
+
+    # F 최소 노드 팝
+    current = heapq.heappop(open_heap)[2]
+
+    # 도착 도달 → 경로 복원(보라, state=4) 후 종료
+    if current is goal_node:
+        p = current.parent
+        while p and p is not start_node:
+            p.state = 4  # Path (Purple)
+            p = p.parent
+        algo_running = False
+        return
+
+    closed_set.add(current)
+    if current is not start_node and current is not goal_node and current.state != 4:
+        current.state = 2
+
+    # 이웃 갱신
+    for nb in get_neighbors(current, grid):
+        if nb in closed_set:
+            continue
+        tentative_g = current.g + 1
+        if tentative_g < nb.g:
+            nb.parent = current
+            nb.g = tentative_g
+            nb.h = manhattan(nb, goal_node)
+            nb.f = nb.g + nb.h
+            heapq.heappush(open_heap, (nb.f, next(counter), nb))
+            if nb is not start_node and nb is not goal_node:
+                nb.state = 3
 
 def a_star(start, goal, grid):
     open_list = []
@@ -95,13 +151,19 @@ left_pressed = False
 right_pressed = False
 LeftClickNum = 0
 
-# A* 알고리즘을 위한 오픈 리스트와 클로즈드 리스트
-open_list = []
-closed_list = set()
+# A* 알고리즘 변수
+counter = count()
+algo_running = False
+start_node = None
+goal_node = None
+open_heap = []
+closed_set = set()
 
 # 메인 루프
 running = True
 while running:
+    if algo_running:
+        step_astar()
     clear_canvas()
 
     for i in range(20):
@@ -139,6 +201,22 @@ while running:
                     if node.state == 10 or node.state == 20:
                         node.state = 0
             LeftClickNum = 0
+        elif e.type == SDL_KEYDOWN and e.key == SDLK_SPACE:
+            start_astar()  # 스페이스로 A* 시작
+        elif e.type == SDL_KEYDOWN and e.key == SDLK_c:
+            # 전체 초기화
+            for i in range(20):
+                for j in range(20):
+                    n = grid[i][j]
+                    n.state = 0
+                    n.g = float('inf');
+                    n.h = 0;
+                    n.f = float('inf');
+                    n.parent = None
+            LeftClickNum = 0
+            algo_running = False
+            open_heap.clear()
+            closed_set.clear()
 
         # 좌클릭 시작 (누름)
         elif e.type == SDL_MOUSEBUTTONDOWN and e.button == SDL_BUTTON_LEFT:
